@@ -1,6 +1,7 @@
 pub mod jsonb;
 mod constants;
 mod json_writer_jsonb;
+mod io_utils;
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
