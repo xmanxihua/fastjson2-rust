@@ -15,9 +15,13 @@ mod tests {
     #[test]
     fn it_works() {
         let mut jsonb = JSONWriterJSONB::new();
-        jsonb.write_option_i32(Some(0x01020304));
+        // jsonb.write_option_i32(Some(0x01020304));
+        // let vec1 = jsonb.get_bytes();
+        // println!("{:?}", vec1);
+        // assert_eq!(vec1, vec![72, 1, 2, 3, 4]);
+        jsonb.write_option_string(Some("中国".into()));
         let vec1 = jsonb.get_bytes();
         println!("{:?}", vec1);
-        assert_eq!(vec1, vec![72, 1, 2, 3, 4]);
+        assert_eq!(vec1, vec![124, 4, 45, 78, -3, 86]);
     }
 }

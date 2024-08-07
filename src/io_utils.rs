@@ -23,17 +23,17 @@ pub fn encode_utf8(src: &Vec<char>, mut offset: usize, len: i32, dst: &mut Vec<i
             dst[dp as usize] = (0xc0 | (c >> 6)) as i8;
             dst[(dp + 1) as usize] = (0x80 | (c & 0x3f)) as i8;
             dp += 2;
-        } else if c >= 0xD800 as u32 && c < (0xDFFF as u32 + 1) { //Character.isSurrogate(c) but 1.7
+        } else if c >= 0xD800u32 && c < (0xDFFFu32 + 1) { //Character.isSurrogate(c) but 1.7
             let mut uc:i32;
             let ip = offset - 1;
-            if c < 0xDBFF as u32 { // Character.isHighSurrogate(c)
-                if (sl - ip < 2) {
+            if c < 0xDBFFu32 { // Character.isHighSurrogate(c)
+                if sl - ip < 2 {
                     uc = -1;
                 } else {
                     let d = src[ip + 1] as u32;
                     // d >= '\uDC00' && d < ('\uDFFF' + 1)
-                    if (d >= 0xDC00 as u32 && d < (0xDFFF as u32 + 1)) { // Character.isLowSurrogate(d)
-                        uc = ((c << 10) + d) as i32 + (0x010000 - ((0xD800 as i32) << 10) - 0xDC00 as i32); // Character.toCodePoint(c, d)
+                    if d >= 0xDC00u32 && d < (0xDFFFu32 + 1) { // Character.isLowSurrogate(d)
+                        uc = ((c << 10) + d) as i32 + (0x010000 - ((0xD800i32) << 10) - 0xDC00i32); // Character.toCodePoint(c, d)
                     } else {
                         //                            throw new JSONException("encode_utf8 error", new MalformedInputException(1));
                         dst[dp as usize] = b'?' as i8;

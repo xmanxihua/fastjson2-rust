@@ -16,7 +16,13 @@ impl JSONWriterJSONB {
             features: 0,
         }
     }
-
+    pub fn write_none(&mut self) {
+        if self.off == self.bytes.len() as i32 {
+            self.ensure_capacity(self.off + 1);
+        }
+        self.bytes[self.off as usize] = BC_NULL;
+        self.off += 1;
+    }
     pub fn write_raw(&mut self, b: i8) {
         if self.off == self.bytes.len() as i32 {
             self.ensure_capacity(self.off + 1);
@@ -30,11 +36,6 @@ impl JSONWriterJSONB {
     }
 
     pub fn write_option_string(&mut self, s: Option<String>) {
-        // if (str == null) {
-        // writeNull();
-        // return;
-        // }
-
         if let Some(s) = s {
             let mut off = self.off;
             let mut ascii = true;
@@ -42,13 +43,13 @@ impl JSONWriterJSONB {
             let strlen = chars.len() as i32;
             if strlen < STR_ASCII_FIX_LEN {
                 let min_capacity = off + 1 + strlen;
-                if (min_capacity - self.bytes.len() as i32 > 0) {
+                if min_capacity - self.bytes.len() as i32 > 0 {
                     self.ensure_capacity(min_capacity);
                 }
 
-                self.bytes[off as  usize] = strlen as i8 + BC_STR_ASCII_FIX_MIN;
+                self.bytes[off as usize] = strlen as i8 + BC_STR_ASCII_FIX_MIN;
                 for ch in chars.iter() {
-                    if (*ch as u64 > 0x00FF) {
+                    if (*ch as u32 > 0x00FF) {
                         ascii = false;
                         break;
                     }
@@ -64,30 +65,7 @@ impl JSONWriterJSONB {
                 }
             }
 
-            {
-                let upper_bound = strlen & !3;
-                let mut j = 0;
-                for i in (0..upper_bound as usize).step_by(4) {
-                    j = i;
-                    let c0 = chars[i];
-                    let c1 = chars[i + 1];
-                    let c2 = chars[i + 2];
-                    let c3 = chars[i + 3];
-                    if (c0 > 0x00FF as char || c1 > 0x00FF as char || c2 > 0x00FF as char || c3 > 0x00FF as char) {
-                        ascii = false;
-                        break;
-                    }
-                }
-                j += 4;
-                if (ascii) {
-                    for i in  j..strlen as usize {
-                        if (chars[i] > 0x00FF as char) {
-                            ascii = false;
-                            break;
-                        }
-                    }
-                }
-            }
+            ascii = s.is_ascii();
 
             let mut min_capacity = if ascii { strlen } else { strlen * 3 } + off + 5 /*max str len*/ + 1;
 
@@ -95,11 +73,12 @@ impl JSONWriterJSONB {
                 self.ensure_capacity(min_capacity);
             }
 
-            if (ascii) {
-                if strlen <= STR_ASCII_FIX_LEN  {
-                    self.bytes[off as usize] = (strlen + BC_STR_ASCII_FIX_MIN as i32 ) as i8;
+            if ascii {
+                if strlen <= STR_ASCII_FIX_LEN {
+                    self.bytes[off as usize] = (strlen + BC_STR_ASCII_FIX_MIN as i32) as i8;
+                    off+=1;
                 } else if strlen <= INT32_BYTE_MAX {
-                    Self::put_string_size_small(&mut self.bytes, off, strlen as i32);
+                    Self::put_string_size_small(&mut self.bytes, off, strlen);
                     off += 3;
                 } else {
                     off += Self::put_string_size_large(&mut self.bytes, off, strlen);
@@ -110,25 +89,26 @@ impl JSONWriterJSONB {
                 }
             } else {
                 let max_size = strlen * 3;
-                let len_byte_cnt = Self::size_of_int(max_size as i32);
+                let len_byte_cnt = Self::size_of_int(max_size);
                 self.ensure_capacity(off + max_size + len_byte_cnt + 1);
-                let result = io_utils::encode_utf8(&chars, 0, strlen as i32, &mut self.bytes, (off + len_byte_cnt + 1) as i32);
+                let result = io_utils::encode_utf8(&chars, 0, strlen, &mut self.bytes, off + len_byte_cnt + 1);
 
                 let utf8len = result - off - len_byte_cnt - 1;
-                let utf8len_byte_cnt = Self::size_of_int(utf8len as i32);
+                let utf8len_byte_cnt = Self::size_of_int(utf8len);
                 if len_byte_cnt != utf8len_byte_cnt {
-                    self.bytes.split_at_mut((off + utf8len_byte_cnt + 1 + utf8len) as usize);
-                    self.bytes[(off + utf8len_byte_cnt + 1)as usize..(off + utf8len_byte_cnt + 1 + utf8len) as usize].copy_from_slice(&self.bytes[(off + len_byte_cnt + 1) as usize..(off + len_byte_cnt + 1 + utf8len)as usize]);
+                    let (left, right) = self.bytes.split_at_mut((off + utf8len_byte_cnt + 1) as usize);
+                    let x = &left[(off + len_byte_cnt + 1) as usize..(off + len_byte_cnt + 1 + utf8len) as usize];
+                    right.copy_from_slice(&x);
                 }
                 let bytes = &mut self.bytes;
                 bytes[off as usize] = BC_STR_UTF8;
                 off += 1;
-                if (utf8len as i32 >= BC_INT32_NUM_MIN as i32 && utf8len as i32 <= BC_INT32_NUM_MAX as i32) {
+                if (utf8len >= BC_INT32_NUM_MIN as i32 && utf8len <= BC_INT32_NUM_MAX as i32) {
                     bytes[off as usize] = utf8len as i8;
                     off += 1;
-                } else if (utf8len as i32>= INT32_BYTE_MIN && utf8len as i32 <= INT32_BYTE_MAX) {
+                } else if (utf8len >= INT32_BYTE_MIN && utf8len <= INT32_BYTE_MAX) {
                     bytes[off as usize] = (BC_INT32_BYTE_ZERO as i32 + (utf8len >> 8)) as i8;
-                    bytes[(off + 1) as usize] = (utf8len) as i8;
+                    bytes[(off + 1) as usize] = utf8len as i8;
                     off += 2;
                 } else {
                     off += Self::write_int32_from_off(bytes, off, utf8len);
@@ -136,10 +116,12 @@ impl JSONWriterJSONB {
                 off += utf8len;
             }
             self.off = off;
+        } else {
+            self.write_none();
         }
     }
 
-    pub fn write_int32_from_off(bytes: &Vec<i8>, mut off: i32, val: i32) -> i32 {
+    pub fn write_int32_from_off(bytes: &mut Vec<i8>, mut off: i32, val: i32) -> i32 {
         if (val >= BC_INT32_NUM_MIN as i32 && val <= BC_INT32_NUM_MAX as i32) {
             bytes[off as usize] = val as i8;
             return 1;
@@ -167,23 +149,23 @@ impl JSONWriterJSONB {
 
     fn put_string_size_small(bytes: &mut Vec<i8>, off: i32, val: i32) {
         bytes[off as usize] = BC_STR_ASCII;
-        bytes[(off + 1)as usize] = (BC_INT32_BYTE_ZERO as i32 + (val >> 8)) as i8;
-        bytes[(off + 2)as usize] = val as i8;
+        bytes[(off + 1) as usize] = (BC_INT32_BYTE_ZERO as i32 + (val >> 8)) as i8;
+        bytes[(off + 2) as usize] = val as i8;
     }
 
     fn put_string_size_large(bytes: &mut Vec<i8>, off: i32, strlen: i32) -> i32 {
-        if strlen <= INT32_SHORT_MAX  {
+        if strlen <= INT32_SHORT_MAX {
             bytes[off as usize] = BC_STR_ASCII;
             bytes[(off + 1) as usize] = (BC_INT32_SHORT_ZERO as i32 + (strlen >> 16)) as i8;
-            bytes[(off + 2)as usize] = (strlen >> 8) as i8;
-            bytes[(off + 3)as usize] = strlen as i8;
+            bytes[(off + 2) as usize] = (strlen >> 8) as i8;
+            bytes[(off + 3) as usize] = strlen as i8;
             return 4;
         }
 
         bytes[off as usize] = BC_STR_ASCII;
-        bytes[(off + 1)as usize] = BC_INT32;
+        bytes[(off + 1) as usize] = BC_INT32;
 
-        let vec = Self::i32_to_array(strlen as i32);
+        let vec = Self::i32_to_array(strlen);
         for v in vec.iter().enumerate() {
             bytes[off as usize + 2 + v.0] = *v.1;
         }
@@ -219,7 +201,7 @@ impl JSONWriterJSONB {
             self.write_int32(val);
         } else {
             let min_capacity = self.off + 5;
-            if min_capacity as usize>= self.bytes.len() {
+            if min_capacity as usize >= self.bytes.len() {
                 self.ensure_capacity(min_capacity);
             }
             let mut off = self.off;
