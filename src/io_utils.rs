@@ -1,11 +1,11 @@
 use std::cmp::min;
 
-pub fn encode_utf8(src: &Vec<char>, mut offset: usize, len: i32, dst: &mut Vec<i8>, mut dp: i32) -> i32 {
+pub fn encode_utf8(src: &Vec<u16>, mut offset: usize, len: i32, dst: &mut Vec<i8>, mut dp: i32) -> i32 {
     let sl = offset + len as usize;
     let dl_ascii = dp + min(len, dst.len() as i32);
 
     // ASCII only optimized loop
-    while dp < dl_ascii && src[offset] < '\u{0080}' {
+    while dp < dl_ascii && src[offset] < 0080 {
         dst[dp as usize]  = src[offset] as i8;
         dp += 1;
         offset += 1;

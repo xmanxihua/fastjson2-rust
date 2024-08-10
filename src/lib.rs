@@ -19,9 +19,10 @@ mod tests {
         // let vec1 = jsonb.get_bytes();
         // println!("{:?}", vec1);
         // assert_eq!(vec1, vec![72, 1, 2, 3, 4]);
-        jsonb.write_option_string(Some("中国".into()));
+        jsonb.write_option_string(Some("𠜎国".into()));
         let vec1 = jsonb.get_bytes();
         println!("{:?}", vec1);
-        assert_eq!(vec1, vec![124, 4, 45, 78, -3, 86]);
+        // assert_eq!(vec1, vec![122, 6, -28, -72, -83, -27, -101, -67]);
+        assert_eq!(vec1, vec![122, 7, -16, -96, -100, -114, -27, -101, -67]);
     }
 }

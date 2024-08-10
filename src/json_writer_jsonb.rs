@@ -1,4 +1,5 @@
 use std::io::{Bytes, SeekFrom};
+use std::str::EncodeUtf16;
 use crate::{constants, io_utils};
 use crate::constants::{BC_CHAR, BC_INT32, BC_INT32_BYTE_ZERO, BC_INT32_NUM_MAX, BC_INT32_NUM_MIN, BC_INT32_SHORT_ZERO, BC_NULL, BC_STR_ASCII, BC_STR_ASCII_FIX_MIN, BC_STR_UTF8, features, INT32_BYTE_MAX, INT32_BYTE_MIN, INT32_SHORT_MAX, INT32_SHORT_MIN, STR_ASCII_FIX_LEN};
 const BIG_ENDIAN: bool = cfg!(target_endian = "little");
@@ -39,7 +40,7 @@ impl JSONWriterJSONB {
         if let Some(s) = s {
             let mut off = self.off;
             let mut ascii = true;
-            let chars: Vec<char> = s.chars().collect();
+            let chars: Vec<u16> = s.encode_utf16().collect();
             let strlen = chars.len() as i32;
             if strlen < STR_ASCII_FIX_LEN {
                 let min_capacity = off + 1 + strlen;
@@ -49,7 +50,7 @@ impl JSONWriterJSONB {
 
                 self.bytes[off as usize] = strlen as i8 + BC_STR_ASCII_FIX_MIN;
                 for ch in chars.iter() {
-                    if (*ch as u32 > 0x00FF) {
+                    if *ch as u32 > 0x00FF {
                         ascii = false;
                         break;
                     }
