@@ -1,7 +1,10 @@
+extern crate core;
+
 pub mod jsonb;
 mod constants;
 mod json_writer_jsonb;
 mod io_utils;
+mod json_reader_jsonb;
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
@@ -19,7 +22,7 @@ mod tests {
         // let vec1 = jsonb.get_bytes();
         // println!("{:?}", vec1);
         // assert_eq!(vec1, vec![72, 1, 2, 3, 4]);
-        jsonb.write_option_string(Some("𠜎国".into()));
+        jsonb.write_option_string_utf16(Some("𠜎国".into()));
         let vec1 = jsonb.get_bytes();
         println!("{:?}", vec1);
         // assert_eq!(vec1, vec![122, 6, -28, -72, -83, -27, -101, -67]);

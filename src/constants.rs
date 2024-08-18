@@ -172,3 +172,6 @@ pub mod features {
 
     pub const NOT_WRITE_NUMBER_CLASS_NAME: u64 = 1u64 << 40;
 }
+
+
+pub const BIG_ENDIAN: bool = cfg!(target_endian = "little");

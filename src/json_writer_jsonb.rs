@@ -1,8 +1,7 @@
 use std::io::{Bytes, SeekFrom};
 use std::str::EncodeUtf16;
 use crate::{constants, io_utils};
-use crate::constants::{BC_CHAR, BC_INT32, BC_INT32_BYTE_ZERO, BC_INT32_NUM_MAX, BC_INT32_NUM_MIN, BC_INT32_SHORT_ZERO, BC_NULL, BC_STR_ASCII, BC_STR_ASCII_FIX_MIN, BC_STR_UTF8, features, INT32_BYTE_MAX, INT32_BYTE_MIN, INT32_SHORT_MAX, INT32_SHORT_MIN, STR_ASCII_FIX_LEN};
-const BIG_ENDIAN: bool = cfg!(target_endian = "little");
+use crate::constants::{BC_CHAR, BC_INT32, BC_INT32_BYTE_ZERO, BC_INT32_NUM_MAX, BC_INT32_NUM_MIN, BC_INT32_SHORT_ZERO, BC_NULL, BC_STR_ASCII, BC_STR_ASCII_FIX_MIN, BC_STR_UTF8, features, INT32_BYTE_MAX, INT32_BYTE_MIN, INT32_SHORT_MAX, INT32_SHORT_MIN, STR_ASCII_FIX_LEN, BIG_ENDIAN};
 pub struct JSONWriterJSONB {
     bytes: Vec<i8>,
     off: i32,
@@ -33,16 +32,23 @@ impl JSONWriterJSONB {
     }
 
     pub fn write_option_name(&mut self, name: Option<String>) {
-        self.write_option_string(name);
+        self.write_option_string_utf16(name);
     }
 
-    pub fn write_option_string(&mut self, s: Option<String>) {
+    pub fn write_option_string_utf16(&mut self, s: Option<String>) {
         if let Some(s) = s {
-            let mut off = self.off;
-            let mut ascii = true;
             let chars: Vec<u16> = s.encode_utf16().collect();
-            let strlen = chars.len() as i32;
-            if strlen < STR_ASCII_FIX_LEN {
+            let ascii = s.is_ascii();
+            self.write_utf16_vec(&chars, ascii);
+        } else {
+            self.write_none();
+        }
+    }
+    fn write_utf16_vec(&mut self, chars: &Vec<u16>, ascii: bool) {
+        let mut off = self.off;
+        let strlen = chars.len() as i32;
+        if strlen < STR_ASCII_FIX_LEN {
+            if ascii {
                 let min_capacity = off + 1 + strlen;
                 if min_capacity - self.bytes.len() as i32 > 0 {
                     self.ensure_capacity(min_capacity);
@@ -50,76 +56,65 @@ impl JSONWriterJSONB {
 
                 self.bytes[off as usize] = strlen as i8 + BC_STR_ASCII_FIX_MIN;
                 for ch in chars.iter() {
-                    if *ch as u32 > 0x00FF {
-                        ascii = false;
-                        break;
-                    }
                     self.bytes[off as usize] = *ch as i8;
                     off += 1;
                 }
 
-                if (ascii) {
-                    self.off = off;
-                    return;
-                } else {
-                    off = self.off;
-                }
+                self.off = off;
+                return;
             }
-
-            ascii = s.is_ascii();
-
-            let mut min_capacity = if ascii { strlen } else { strlen * 3 } + off + 5 /*max str len*/ + 1;
-
-            if (min_capacity - self.bytes.len() as i32 > 0) {
-                self.ensure_capacity(min_capacity);
-            }
-
-            if ascii {
-                if strlen <= STR_ASCII_FIX_LEN {
-                    self.bytes[off as usize] = (strlen + BC_STR_ASCII_FIX_MIN as i32) as i8;
-                    off+=1;
-                } else if strlen <= INT32_BYTE_MAX {
-                    Self::put_string_size_small(&mut self.bytes, off, strlen);
-                    off += 3;
-                } else {
-                    off += Self::put_string_size_large(&mut self.bytes, off, strlen);
-                }
-                for i in 0..strlen {
-                    self.bytes[off as usize] = chars[i as usize] as i8;
-                    off += 1;
-                }
-            } else {
-                let max_size = strlen * 3;
-                let len_byte_cnt = Self::size_of_int(max_size);
-                self.ensure_capacity(off + max_size + len_byte_cnt + 1);
-                let result = io_utils::encode_utf8(&chars, 0, strlen, &mut self.bytes, off + len_byte_cnt + 1);
-
-                let utf8len = result - off - len_byte_cnt - 1;
-                let utf8len_byte_cnt = Self::size_of_int(utf8len);
-                if len_byte_cnt != utf8len_byte_cnt {
-                    let (left, right) = self.bytes.split_at_mut((off + utf8len_byte_cnt + 1) as usize);
-                    let x = &left[(off + len_byte_cnt + 1) as usize..(off + len_byte_cnt + 1 + utf8len) as usize];
-                    right.copy_from_slice(&x);
-                }
-                let bytes = &mut self.bytes;
-                bytes[off as usize] = BC_STR_UTF8;
-                off += 1;
-                if (utf8len >= BC_INT32_NUM_MIN as i32 && utf8len <= BC_INT32_NUM_MAX as i32) {
-                    bytes[off as usize] = utf8len as i8;
-                    off += 1;
-                } else if (utf8len >= INT32_BYTE_MIN && utf8len <= INT32_BYTE_MAX) {
-                    bytes[off as usize] = (BC_INT32_BYTE_ZERO as i32 + (utf8len >> 8)) as i8;
-                    bytes[(off + 1) as usize] = utf8len as i8;
-                    off += 2;
-                } else {
-                    off += Self::write_int32_from_off(bytes, off, utf8len);
-                }
-                off += utf8len;
-            }
-            self.off = off;
-        } else {
-            self.write_none();
         }
+
+
+        let mut min_capacity = if ascii { strlen } else { strlen * 3 } + off + 5 /*max str len*/ + 1;
+
+        if (min_capacity - self.bytes.len() as i32 > 0) {
+            self.ensure_capacity(min_capacity);
+        }
+
+        if ascii {
+            if strlen <= STR_ASCII_FIX_LEN {
+                self.bytes[off as usize] = (strlen + BC_STR_ASCII_FIX_MIN as i32) as i8;
+                off += 1;
+            } else if strlen <= INT32_BYTE_MAX {
+                Self::put_string_size_small(&mut self.bytes, off, strlen);
+                off += 3;
+            } else {
+                off += Self::put_string_size_large(&mut self.bytes, off, strlen);
+            }
+            for i in 0..strlen {
+                self.bytes[off as usize] = chars[i as usize] as i8;
+                off += 1;
+            }
+        } else {
+            let max_size = strlen * 3;
+            let len_byte_cnt = Self::size_of_int(max_size);
+            self.ensure_capacity(off + max_size + len_byte_cnt + 1);
+            let result = io_utils::encode_utf8(&chars, 0, strlen, &mut self.bytes, off + len_byte_cnt + 1);
+
+            let utf8len = result - off - len_byte_cnt - 1;
+            let utf8len_byte_cnt = Self::size_of_int(utf8len);
+            if len_byte_cnt != utf8len_byte_cnt {
+                let (left, right) = self.bytes.split_at_mut((off + utf8len_byte_cnt + 1) as usize);
+                let x = &left[(off + len_byte_cnt + 1) as usize..(off + len_byte_cnt + 1 + utf8len) as usize];
+                right.copy_from_slice(&x);
+            }
+            let bytes = &mut self.bytes;
+            bytes[off as usize] = BC_STR_UTF8;
+            off += 1;
+            if (utf8len >= BC_INT32_NUM_MIN as i32 && utf8len <= BC_INT32_NUM_MAX as i32) {
+                bytes[off as usize] = utf8len as i8;
+                off += 1;
+            } else if (utf8len >= INT32_BYTE_MIN && utf8len <= INT32_BYTE_MAX) {
+                bytes[off as usize] = (BC_INT32_BYTE_ZERO as i32 + (utf8len >> 8)) as i8;
+                bytes[(off + 1) as usize] = utf8len as i8;
+                off += 2;
+            } else {
+                off += Self::write_int32_from_off(bytes, off, utf8len);
+            }
+            off += utf8len;
+        }
+        self.off = off;
     }
 
     pub fn write_int32_from_off(bytes: &mut Vec<i8>, mut off: i32, val: i32) -> i32 {
